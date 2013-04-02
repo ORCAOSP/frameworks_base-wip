@@ -23,6 +23,8 @@ import android.app.ActivityManagerNative;
 import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.app.SearchManager;
+import android.app.Profile;
+import android.app.ProfileManager;
 import android.app.StatusBarManager;
 import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
@@ -246,6 +248,9 @@ public class KeyguardViewMediator {
     private int mLockSoundId;
     private int mUnlockSoundId;
     private int mLockSoundStreamId;
+
+    private int mSlideLockDelay;
+    private ProfileManager mProfileManager;
 
     /**
      * The volume applied to the lock/unlock sounds.
@@ -495,6 +500,8 @@ public class KeyguardViewMediator {
         mKeyguardViewManager = new KeyguardViewManager(context, wm, mViewMediatorCallback,
                 mLockPatternUtils);
 
+        mProfileManager = (ProfileManager) context.getSystemService(Context.PROFILE_SERVICE);
+
         mUserPresentIntent = new Intent(Intent.ACTION_USER_PRESENT);
         mUserPresentIntent.addFlags(Intent.FLAG_RECEIVER_REPLACE_PENDING
                 | Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT);
@@ -567,15 +574,26 @@ public class KeyguardViewMediator {
     public void onScreenTurnedOff(int why) {
         synchronized (this) {
             mScreenOn = false;
+            mSlideLockDelay = why;
             if (DEBUG) Log.d(TAG, "onScreenTurnedOff(" + why + ")");
 
             mKeyguardDonePending = false;
 
-            // Lock immediately based on setting if secure (user has a pin/pattern/password).
-            // This also "locks" the device when not secure to provide easy access to the
-            // camera while preventing unwanted input.
-            final boolean lockImmediately =
-                mLockPatternUtils.getPowerButtonInstantlyLocks();
+            // Prepare for handling Lock/Slide lock delay and timeout
+            boolean lockImmediately = false;
+            final ContentResolver cr = mContext.getContentResolver();
+            boolean separateSlideLockTimeoutEnabled = Settings.System.getInt(cr,
+                    Settings.System.SCREEN_LOCK_SLIDE_DELAY_TOGGLE, 0) == 1;
+            if (mLockPatternUtils.isSecure()) {
+                // Lock immediately based on setting if secure (user has a pin/pattern/password)
+                // This is retained as-is to ensue AOSP security integrity is maintained
+                lockImmediately = mLockPatternUtils.getPowerButtonInstantlyLocks();
+            } else {
+                // Unless a separate slide lock timeout is enabled, this "locks" the device when
+                // not secure to provide easy access to the camera while preventing unwanted input
+                lockImmediately = separateSlideLockTimeoutEnabled ? false
+                        : mLockPatternUtils.getPowerButtonInstantlyLocks();
+            }
 
             if (mExitSecureCallback != null) {
                 if (DEBUG) Log.d(TAG, "pending exit secure callback cancelled");
@@ -615,6 +633,18 @@ public class KeyguardViewMediator {
                 Settings.Secure.LOCK_SCREEN_LOCK_AFTER_TIMEOUT,
                 KEYGUARD_LOCK_AFTER_DELAY_DEFAULT);
 
+        // From CyanogenMod specific Settings
+        // If utilizing a secured lock screen, we should not utilize the slide
+        // delay and should let it default to the standard delay
+        boolean separateSlideLockTimeoutEnabled = (mLockPatternUtils.isSecure() ? false
+                : Settings.System.getInt(cr,
+                        Settings.System.SCREEN_LOCK_SLIDE_DELAY_TOGGLE, 0) == 1);
+
+        int slideLockTimeoutDelay = (mSlideLockDelay == WindowManagerPolicy.OFF_BECAUSE_OF_TIMEOUT ? Settings.System
+                .getInt(cr, Settings.System.SCREEN_LOCK_SLIDE_TIMEOUT_DELAY,
+                        KEYGUARD_LOCK_AFTER_DELAY_DEFAULT) : Settings.System.getInt(cr,
+                                Settings.System.SCREEN_LOCK_SLIDE_SCREENOFF_DELAY, 0));
+
         // From DevicePolicyAdmin
         final long policyTimeout = mLockPatternUtils.getDevicePolicyManager()
                 .getMaximumTimeToLock(null, mLockPatternUtils.getCurrentUser());
@@ -625,7 +655,7 @@ public class KeyguardViewMediator {
             displayTimeout = Math.max(displayTimeout, 0); // ignore negative values
             timeout = Math.min(policyTimeout - displayTimeout, lockAfterTimeout);
         } else {
-            timeout = lockAfterTimeout;
+            timeout = separateSlideLockTimeoutEnabled ? slideLockTimeoutDelay : lockAfterTimeout;
         }
 
         if (timeout <= 0) {
@@ -887,6 +917,16 @@ public class KeyguardViewMediator {
                 && mLockPatternUtils.isLockScreenDisabled() && !lockedOrMissing) {
             if (DEBUG) Log.d(TAG, "doKeyguard: not showing because lockscreen is off");
             return;
+        }
+
+        // if the current profile has disabled us, don't show
+        Profile profile = mProfileManager.getActiveProfile();
+        if (profile != null) {
+            if (!lockedOrMissing
+                    && profile.getScreenLockMode() == Profile.LockMode.DISABLE) {
+                if (DEBUG) Log.d(TAG, "doKeyguard: not showing because of profile override");
+                return;
+            }
         }
 
         if (DEBUG) Log.d(TAG, "doKeyguard: showing the lock screen");

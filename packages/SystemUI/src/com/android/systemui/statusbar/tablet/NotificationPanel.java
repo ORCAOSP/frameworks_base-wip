@@ -34,7 +34,6 @@ import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.os.RemoteException;
 import android.os.UserHandle;
-import android.provider.Settings;
 import android.util.AttributeSet;
 import android.util.Slog;
 import android.view.Gravity;
@@ -55,8 +54,15 @@ import android.widget.RelativeLayout;
 
 import com.android.systemui.ExpandHelper;
 import com.android.systemui.R;
+import com.android.systemui.statusbar.phone.PanelBar;
+import com.android.systemui.statusbar.BaseStatusBar;
+import com.android.systemui.statusbar.phone.PhoneStatusBar;
 import com.android.systemui.statusbar.phone.QuickSettingsContainerView;
 import com.android.systemui.statusbar.phone.SettingsPanelView;
+import com.android.systemui.statusbar.policy.BatteryControllerStock;
+import com.android.systemui.statusbar.policy.BluetoothController;
+import com.android.systemui.statusbar.policy.LocationController;
+import com.android.systemui.statusbar.policy.NetworkController;
 import com.android.systemui.statusbar.policy.NotificationRowLayout;
 import com.android.systemui.statusbar.toggles.ToggleManager;
 
@@ -77,6 +83,7 @@ public class NotificationPanel extends RelativeLayout implements StatusBarPanel,
     ImageView mNotificationButton;
     View mNotificationScroller;
     ViewGroup mContentFrame;
+    View mSettingsView;
     Rect mContentArea = new Rect();
     ViewGroup mContentParent;
     TabletStatusBar mBar;
@@ -87,7 +94,6 @@ public class NotificationPanel extends RelativeLayout implements StatusBarPanel,
     // settings
     ToggleManager mToggleManager;
     boolean mHasSettingsPanel, mHasFlipSettings;
-    int mToggleStyle;
     SettingsPanelView mSettingsPanel;
     View mFlipSettingsView;
     QuickSettingsContainerView mSettingsContainer;
@@ -104,6 +110,21 @@ public class NotificationPanel extends RelativeLayout implements StatusBarPanel,
     final int FLIP_DURATION = (FLIP_DURATION_IN + FLIP_DURATION_OUT);
     Animator mScrollViewAnim, mFlipSettingsViewAnim, mNotificationButtonAnim,
     mSettingsButtonAnim, mClearButtonAnim;
+
+    public QuickSettingsCallback mCallback;
+
+    // Simple callback used to provide a bar to QuickSettings
+    class QuickSettingsCallback extends PanelBar {
+        public QuickSettingsCallback(Context context, AttributeSet attrs) {
+            super(context, attrs);
+        }
+
+        @Override
+        public void collapseAllPanels(boolean animate) {
+            super.collapseAllPanels(animate);
+            show(false, animate);
+        }
+    }
 
     public NotificationPanel(Context context, AttributeSet attrs) {
         this(context, attrs, 0);
@@ -211,15 +232,8 @@ public class NotificationPanel extends RelativeLayout implements StatusBarPanel,
 
             // wherever you find it, Quick Settings needs a container to survive
             mToggleManager = new ToggleManager(mContext);
-            mToggleStyle = Settings.System.getInt(mContext.getContentResolver(), 
-                    Settings.System.TOGGLES_STYLE,ToggleManager.STYLE_TILE);
-            if (mToggleStyle == ToggleManager.STYLE_SCROLLABLE) {
-                mToggleManager.setContainer((LinearLayout) findViewById(R.id.quick_toggles),
-                        ToggleManager.STYLE_SCROLLABLE);
-            } else {
-                mToggleManager.setContainer((LinearLayout) findViewById(R.id.quick_toggles),
+            mToggleManager.setContainer((LinearLayout) findViewById(R.id.quick_toggles),
                     ToggleManager.STYLE_TRADITIONAL);
-            }
             mSettingsContainer = (QuickSettingsContainerView) findViewById(R.id.quick_settings_container);
             if (mSettingsContainer != null) {
                 mToggleManager.setContainer(mSettingsContainer, ToggleManager.STYLE_TILE);
@@ -368,7 +382,8 @@ public class NotificationPanel extends RelativeLayout implements StatusBarPanel,
     }
 
     @Override
-    public void onClick(View v) {  
+    public void onClick(View v) {
+            swapPanels();
     }
 
     public void setNotificationCount(int n) {
@@ -376,6 +391,34 @@ public class NotificationPanel extends RelativeLayout implements StatusBarPanel,
     }
 
     public void setContentFrameVisible(final boolean showing, boolean animate) {
+    }
+
+    public void swapPanels() {
+        final View toShow, toHide;
+        if (mSettingsView.getVisibility() == View.GONE) {
+            toShow = mSettingsView;
+            toHide = mNotificationScroller;
+        } else {
+            toShow = mNotificationScroller;
+            toHide = mSettingsView;
+        }
+        Animator a = ObjectAnimator.ofFloat(toHide, "alpha", 1f, 0f)
+                .setDuration(PANEL_FADE_DURATION);
+        a.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator _a) {
+                toHide.setVisibility(View.GONE);
+                toShow.setVisibility(View.VISIBLE);
+                if (toShow == mSettingsView || mNotificationCount > 0) {
+                    ObjectAnimator.ofFloat(toShow, "alpha", 0f, 1f)
+                            .setDuration(PANEL_FADE_DURATION)
+                            .start();
+                }
+
+                updateClearButton();
+            }
+        });
+        a.start();
     }
 
     public void updateClearButton() {

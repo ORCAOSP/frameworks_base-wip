@@ -292,6 +292,14 @@
     <string name="screen_lock">Screen lock</string>
     <!-- Button to turn off the phone, within the Phone Options dialog -->
     <string name="power_off">Power off</string>
+
+    <!-- label for item that toggles expand desktop mode -->
+    <string name="global_actions_toggle_expanded_desktop_mode">Expanded desktop</string>
+    <!-- status message in phone options dialog for when expand desktop mode is on -->
+    <string name="global_actions_expanded_desktop_mode_on_status">Enabled</string>
+    <!-- status message in phone options dialog for when expand desktop mode is off -->
+    <string name="global_actions_expanded_desktop_mode_off_status">Disabled</string>
+
     <!-- Spoken description for ringer silent option. [CHAR LIMIT=NONE] -->
     <string name="silent_mode_silent">Ringer off</string>
     <!-- Spoken description for ringer vibrate option. [CHAR LIMIT=NONE] -->
@@ -4063,33 +4071,29 @@
     <!-- In WiFi notification -->
     <string name="notify_turn_wifi_off_title">Turn Wi-Fi off</string>
 
+    <!--CyanogenMod Profiles -->
+    <!-- Names of default profiles. -->
+    <string name="profileNameDefault">Default</string>
+    <string name="profileNameWork">Work</string>
+    <string name="profileNameHome">Home</string>
+    <string name="profileNameSilent">Silent</string>
+    <string name="profileNameNight">Night</string>
+
+    <!-- Names of application groups. -->
+    <string name="profileGroupPhone">Phone</string>
+    <string name="profileGroupCalendar">Calendar</string>
+    <string name="profileGroupGmail">Gmail</string>
+    <string name="profileGroupEmail">Email</string>
+    <string name="profileGroupSMS">SMS</string>
+
+    <!-- Name of wildcard profile. -->
+    <string name="wildcardProfile">Other</string>
+
+    <!-- label for item that opens the profile choosing dialog -->
+    <string name="global_action_choose_profile">Profile</string>
+
     <!-- Hardware Rotation lock string -->
     <string name="toast_rotation_unlocked">Display rotation unlocked</string>
     <string name="toast_rotation_locked">Display rotation locked</string>
 
-    <!-- Awesome Action Stuff-->
-    <string name="action_home">Home</string>
-    <string name="action_back">Back</string>
-    <string name="action_recents">Recents</string>
-    <string name="action_recents_gb">Recents (GB style)</string>
-    <string name="action_search">Search</string>
-    <string name="action_screenshot">Screenshot</string>
-    <string name="action_menu">Menu</string>
-    <string name="action_ime">Open IME Switcher</string>
-    <string name="action_kill">Kill task</string>
-    <string name="action_lastapp">Last app</string>
-    <string name="action_power">Power</string>
-    <string name="action_notifications">Notifications</string>
-    <string name="action_assist">Search (Google Now)</string>
-    <string name="action_clockoptions">Clock options</string>
-    <string name="action_voiceassist">Voice search</string>
-    <string name="action_torch">Torch</string>
-    <string name="action_silent">Ring/Silent</string>
-    <string name="action_vib">Ring/Vibrate</string>
-    <string name="action_silent_vib">Ring/Vibrate/Silent</string>
-    <string name="action_event">Event</string>
-    <string name="action_today">Today</string>
-    <string name="action_alarm">Alarm</string>
-    <string name="action_null">Blank</string>
-    <string name="action_app">Custom App/Shortcut</string>
 </resources>

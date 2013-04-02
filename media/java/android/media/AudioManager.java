@@ -19,6 +19,8 @@ package android.media;
 import android.annotation.SdkConstant;
 import android.annotation.SdkConstant.SdkConstantType;
 import android.app.PendingIntent;
+import android.app.ProfileGroup;
+import android.app.ProfileManager;
 import android.bluetooth.BluetoothDevice;
 import android.content.ComponentName;
 import android.content.Context;
@@ -34,7 +36,9 @@ import android.os.ServiceManager;
 import android.provider.Settings;
 import android.util.Log;
 import android.view.KeyEvent;
+import android.view.Surface;
 import android.view.VolumePanel;
+import android.view.WindowManager;
 
 import java.util.HashMap;
 
@@ -51,6 +55,8 @@ public class AudioManager {
     private final boolean mUseMasterVolume;
     private final boolean mUseVolumeKeySounds;
     private static String TAG = "AudioManager";
+    private final ProfileManager mProfileManager;
+    private final WindowManager mWindowManager;
 
     /**
      * Broadcast intent, a hint for applications that audio is about to become
@@ -422,6 +428,8 @@ public class AudioManager {
                 com.android.internal.R.bool.config_useMasterVolume);
         mUseVolumeKeySounds = mContext.getResources().getBoolean(
                 com.android.internal.R.bool.config_useVolumeKeySounds);
+        mProfileManager = (ProfileManager) context.getSystemService(Context.PROFILE_SERVICE);
+        mWindowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
     }
 
     private static IAudioService getService()
@@ -472,21 +480,27 @@ public class AudioManager {
                  * Adjust the volume in on key down since it is more
                  * responsive to the user.
                  */
+                int direction;
+                boolean swapKeys = Settings.System.getInt(mContext.getContentResolver(),
+                        Settings.System.SWAP_VOLUME_KEYS, 0) == 1;
+                int rotation = mWindowManager.getDefaultDisplay().getRotation();
+                if (swapKeys
+                        && (rotation == Surface.ROTATION_90
+                        ||  rotation == Surface.ROTATION_180)) {
+                    direction = keyCode == KeyEvent.KEYCODE_VOLUME_UP
+                            ? ADJUST_LOWER
+                            : ADJUST_RAISE;
+                } else {
+                    direction = keyCode == KeyEvent.KEYCODE_VOLUME_UP
+                            ? ADJUST_RAISE
+                            : ADJUST_LOWER;
+                }
                 int flags = FLAG_SHOW_UI | FLAG_VIBRATE;
 
                 if (mUseMasterVolume) {
-                    adjustMasterVolume(
-                            keyCode == KeyEvent.KEYCODE_VOLUME_UP
-                                    ? ADJUST_RAISE
-                                    : ADJUST_LOWER,
-                            flags);
+                    adjustMasterVolume(direction, flags);
                 } else {
-                    adjustSuggestedStreamVolume(
-                            keyCode == KeyEvent.KEYCODE_VOLUME_UP
-                                    ? ADJUST_RAISE
-                                    : ADJUST_LOWER,
-                            stream,
-                            flags);
+                    adjustSuggestedStreamVolume(direction, stream, flags);
                 }
                 break;
             case KeyEvent.KEYCODE_VOLUME_MUTE:
@@ -1000,6 +1014,26 @@ public class AudioManager {
      * current ringer mode that can be queried via {@link #getRingerMode()}.
      */
     public boolean shouldVibrate(int vibrateType) {
+        String packageName = mContext.getPackageName();
+        // Don't apply profiles for "android" context, as these could
+        // come from the NotificationManager, and originate from a real package.
+        if (!packageName.equals("android")) {
+            ProfileGroup profileGroup = mProfileManager.getActiveProfileGroup(packageName);
+            if (profileGroup != null) {
+                Log.v(TAG, "shouldVibrate, group: " + profileGroup.getUuid()
+                        + " mode: " + profileGroup.getVibrateMode());
+                switch (profileGroup.getVibrateMode()) {
+                    case OVERRIDE :
+                        return true;
+                    case SUPPRESS :
+                        return false;
+                    case DEFAULT :
+                        // Drop through
+                }
+            }
+        } else {
+            Log.v(TAG, "Not applying override for 'android' package");
+        }
         IAudioService service = getService();
         try {
             return service.shouldVibrate(vibrateType);

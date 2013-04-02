@@ -34,6 +34,8 @@
     <dimen name="status_bar_height">25dip</dimen>
     <!-- Height of the bottom navigation / system bar. -->
     <dimen name="navigation_bar_height">48dp</dimen>
+    <!-- Height of the bottom navigation / system bar. -->
+    <dimen name="navigation_bar_at_zero">0dp</dimen>
     <!-- Height of the bottom navigation bar in portrait; often the same as @dimen/navigation_bar_height -->
     <dimen name="navigation_bar_height_landscape">48dp</dimen>
     <!-- Width of the navigation bar when it is placed vertically on the screen -->
@@ -243,6 +245,9 @@
     <dimen name="notification_title_text_size">18dp</dimen>
     <!-- Size of smaller notification text (see TextAppearance.StatusBar.EventContent.Line2, Info, Time) -->
     <dimen name="notification_subtext_size">12dp</dimen>
+
+    <!-- Lockscreen target insets -->
+    <item type="dimen" name="lockscreen_target_inset">30dp</item>
 
     <!-- Keyguard dimensions -->
     <!-- TEMP -->

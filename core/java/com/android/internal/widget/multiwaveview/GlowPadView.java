@@ -23,6 +23,7 @@ import android.animation.TimeInterpolator;
 import android.animation.ValueAnimator;
 import android.animation.ValueAnimator.AnimatorUpdateListener;
 import android.content.ComponentName;
+import android.content.ContentResolver;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.content.pm.PackageManager.NameNotFoundException;
@@ -62,7 +63,7 @@ public class GlowPadView extends View {
     private static final int STATE_SNAP = 4;
     private static final int STATE_FINISH = 5;
 
-
+    //Lockscreen targets
     /**
      * @hide
      */
@@ -79,7 +80,19 @@ public class GlowPadView extends View {
     public final static String ICON_FILE = "icon_file";
 
     /**
-     *
+     * Number of customizable lockscreen targets for tablets
+     * @hide
+     */
+    public final static int MAX_TABLET_TARGETS = 7;
+
+    /**
+     * Number of customizable lockscreen targets for phones
+     * @hide
+     */
+    public final static int MAX_PHONE_TARGETS = 4;
+
+    /**
+     * Empty target used to reference unused lockscreen targets
      * @hide
      */
     public final static String EMPTY_TARGET = "empty";
@@ -271,7 +284,6 @@ public class GlowPadView extends View {
         if (a.getValue(R.styleable.GlowPadView_targetDrawables, outValue)) {
             internalSetTargetResources(outValue.resourceId);
         }
-
         if (mTargetDrawables == null || mTargetDrawables.size() == 0) {
             throw new IllegalStateException("Must specify at least one target drawable");
         }
@@ -298,7 +310,9 @@ public class GlowPadView extends View {
 
         a.recycle();
 
-        setVibrateEnabled(mVibrationDuration > 0);
+        final ContentResolver resolver = context.getContentResolver();
+        boolean vibrateEnabled = Settings.System.getInt(resolver,Settings.System.LOCKSCREEN_VIBRATE_ENABLED, 1) == 1;
+        setVibrateEnabled(vibrateEnabled ? mVibrationDuration > 0 : false);
 
         assignDefaultsIfNeeded();
 
@@ -660,14 +674,6 @@ public class GlowPadView extends View {
         }
     }
 
-    public void setMagneticTargets(boolean active) {
-        mMagneticTargets = active;
-    }
-
-    public void setOffset(float offset) {
-        mFirstItemOffset = (float) Math.toRadians(offset);
-    }
-
     public void setTargetResources(ArrayList<TargetDrawable> drawList) {
         if (mAnimatingTargets) {
             // postpone this change until we return to the initial state
@@ -949,6 +955,11 @@ public class GlowPadView extends View {
                         if (angleMatches && (dist2(tx, ty) > snapDistance2)) {
                             activeTarget = i;
                             activeAngle = (float) -angleRad;
+                            break;
+                        } else if (dist2(tx, ty) > snapDistance2 &&
+                            mMagneticTargets && activeTarget == -1) {
+                            activeTarget = 0;
+                            activeAngle = (float) -angleRad;
                         }
                     }
                 }
@@ -968,7 +979,6 @@ public class GlowPadView extends View {
             switchToState(STATE_TRACKING, x, y);
             updateGlowPosition(x, y);
         }
-
         if (mActiveTarget != activeTarget) {
             // Defocus the old target
             if (mActiveTarget != -1) {
@@ -987,7 +997,7 @@ public class GlowPadView extends View {
                     target.setState(TargetDrawable.STATE_FOCUSED);
                     vibrate();
                 }
-                if (mMagneticTargets) {
+                if (mMagneticTargets && activeTarget <= 0) {
                     updateTargetPosition(activeTarget, mWaveCenterX, mWaveCenterY, activeAngle);
                 }
                 if (AccessibilityManager.getInstance(mContext).isEnabled()) {
