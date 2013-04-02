@@ -75,6 +75,7 @@ import android.util.EventLog;
 import android.util.Log;
 import android.util.Slog;
 import android.util.SparseArray;
+import android.util.TypedValue;
 import android.view.Display;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
@@ -272,6 +273,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
     WindowState mStatusBar = null;
     boolean mHasSystemNavBar;
     int mStatusBarHeight;
+    int mFontSize;
     WindowState mNavigationBar = null;
     boolean mHasNavigationBar = false;
     boolean mNavBarAutoHide = false;
@@ -339,50 +341,12 @@ public class PhoneWindowManager implements WindowManagerPolicy {
     int mCurrentAppOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
     boolean mHasSoftInput = false;
     int mBackKillTimeout;
-
+    
     int mPointerLocationMode = 0; // guarded by mLock
 
     // The last window we were told about in focusChanged.
     WindowState mFocusedWindow;
     IApplicationToken mFocusedApp;
-
-    private PowerMenuReceiver mPowerMenuReceiver;
-
-    // PowerMenu Tile
-    class PowerMenuReceiver extends BroadcastReceiver {
-        private boolean mIsRegistered = false;
-
-        public PowerMenuReceiver(Context context) {
-        }
-
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            final String action = intent.getAction();
-            if (action.equals(Intent.ACTION_SCREENSHOT)) {
-                takeScreenshot();
-            } else if (action.equals(Intent.ACTION_REBOOTMENU)) {
-                showRebootDialog();
-            }
-        }
-
-        private void registerSelf() {
-            if (!mIsRegistered) {
-                mIsRegistered = true;
-
-                IntentFilter filter = new IntentFilter();
-                filter.addAction(Intent.ACTION_SCREENSHOT);
-                filter.addAction(Intent.ACTION_REBOOTMENU);
-                mContext.registerReceiver(mPowerMenuReceiver, filter);
-            }
-        }
-
-        private void unregisterSelf() {
-            if (mIsRegistered) {
-                mIsRegistered = false;
-                mContext.unregisterReceiver(this);
-            }
-        }
-    }
 
     private static final class PointerLocationInputEventReceiver extends InputEventReceiver {
         private final PointerLocationView mView;
@@ -634,13 +598,13 @@ public class PhoneWindowManager implements WindowManagerPolicy {
             resolver.registerContentObserver(Settings.System.getUriFor(
                     Settings.System.NAV_HIDE_ENABLE), false, this);
             resolver.registerContentObserver(Settings.System.getUriFor(
-                    Settings.System.STATUSBAR_HIDDEN), false, this);
-            resolver.registerContentObserver(Settings.System.getUriFor(
                     Settings.System.NAVIGATION_BAR_HEIGHT), false, this);
             resolver.registerContentObserver(Settings.System.getUriFor(
                     Settings.System.NAVIGATION_BAR_HEIGHT_LANDSCAPE), false, this);
             resolver.registerContentObserver(Settings.System.getUriFor(
                     Settings.System.NAVIGATION_BAR_WIDTH), false, this);
+            resolver.registerContentObserver(Settings.System.getUriFor(
+                    Settings.System.STATUSBAR_FONT_SIZE), false, this);
             resolver.registerContentObserver(Settings.System.getUriFor(
                     Settings.System.USER_UI_MODE), false, this);
             resolver.registerContentObserver(Settings.System.getUriFor(
@@ -884,19 +848,6 @@ public class PhoneWindowManager implements WindowManagerPolicy {
         }
     }
 
-    public void showRebootDialog() {
-        if (mGlobalActions == null) {
-            mGlobalActions = new GlobalActions(mContext, mWindowManagerFuncs);
-        }
-        final boolean keyguardShowing = keyguardIsShowingTq();
-        mGlobalActions.showRebootDialog(keyguardShowing);
-        if (keyguardShowing) {
-            // since it took two seconds of long press to bring this up,
-            // poke the wake lock so they have some time to see the dialog.
-            mKeyguardMediator.userActivity();
-        }
-    }
-
     boolean isDeviceProvisioned() {
         return Settings.Global.getInt(
                 mContext.getContentResolver(), Settings.Global.DEVICE_PROVISIONED, 0) != 0;
@@ -1095,8 +1046,6 @@ public class PhoneWindowManager implements WindowManagerPolicy {
         } else {
             screenTurnedOff(WindowManagerPolicy.OFF_BECAUSE_OF_USER);
         }
-        mPowerMenuReceiver = new PowerMenuReceiver(context);
-        mPowerMenuReceiver.registerSelf();
     }
 
     public void setInitialDisplaySize(Display display, int width, int height, int density) {
@@ -1131,8 +1080,19 @@ public class PhoneWindowManager implements WindowManagerPolicy {
             }
         }
 
-        mStatusBarHeight = mContext.getResources().getDimensionPixelSize(
+        mFontSize = Settings.System.getInt(mContext.getContentResolver(),
+                Settings.System.STATUSBAR_FONT_SIZE, -1);
+        if (mFontSize == -1) { // No custom Font Size - so obey @dimen
+            mStatusBarHeight = mContext.getResources().getDimensionPixelSize(
                 com.android.internal.R.dimen.status_bar_height);
+        } else { // Custom Font size, so let's adjust Statusbar Height
+            float fontSizepx = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, mFontSize,
+                    mContext.getResources().getDisplayMetrics());
+            int padding = mContext.getResources().getDimensionPixelSize(
+                    com.android.internal.R.dimen.status_bar_padding);
+            mStatusBarHeight = (int) (fontSizepx + padding);
+            // This gives the StatusBar room for the Font, plus a little padding.
+        }
 
         // Height of the navigation bar when presented horizontally at bottom
         mNavigationBarHeightForRotation[mPortraitRotation] =
@@ -1368,6 +1328,12 @@ public class PhoneWindowManager implements WindowManagerPolicy {
         if (NavHide != mNavBarAutoHide) {
         	mNavBarAutoHide = NavHide;
         	resetScreenHelper();
+        }
+        int fontSize = Settings.System.getInt(resolver,
+                Settings.System.STATUSBAR_FONT_SIZE, -1);
+        if (fontSize != mFontSize) {
+            mFontSize = fontSize;
+            resetScreenHelper();
         }
     }
 
@@ -3382,7 +3348,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
                 // and mTopIsFullscreen is that that mTopIsFullscreen is set only if the window
                 // has the FLAG_FULLSCREEN set.  Not sure if there is another way that to be the
                 // case though.
-                if (topIsFullscreen || Settings.System.getBoolean(mContext.getContentResolver(), Settings.System.STATUSBAR_HIDDEN, false) == true) {
+                if (topIsFullscreen) {
                     if (DEBUG_LAYOUT) Log.v(TAG, "** HIDING status bar");
                     if (mStatusBar.hideLw(true)) {
                         changes |= FINISH_LAYOUT_REDO_LAYOUT;
@@ -3621,7 +3587,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
     };
 
     // Assume this is called from the Handler thread.
-   public void takeScreenshot() {
+    private void takeScreenshot() {
         synchronized (mScreenshotLock) {
             if (mScreenshotConnection != null) {
                 return;

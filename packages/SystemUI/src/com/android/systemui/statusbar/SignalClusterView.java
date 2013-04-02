@@ -59,6 +59,8 @@ public class SignalClusterView
     private boolean showingSignalText = false;
     private boolean showingWiFiText = false;
     private boolean showingAltCluster = false;
+    private int mStockFontSize;
+    private int mFontSize;
 
     ViewGroup mWifiGroup, mMobileGroup;
     ImageView mWifi, mMobile, mWifiActivity, mMobileActivity, mMobileType, mAirplane;
@@ -105,6 +107,7 @@ public class SignalClusterView
 
         mHandler = new Handler();
 
+        mStockFontSize = pixelsToSp(mMobileText.getTextSize());
         mSettingsObserver.observe();
 
         apply();
@@ -271,6 +274,8 @@ public class SignalClusterView
     protected void updateSettings() {
         ContentResolver resolver = mContext.getContentResolver();
 
+        int fontSize = Settings.System.getInt(resolver,
+        		Settings.System.STATUSBAR_FONT_SIZE,mStockFontSize);
         showingSignalText = (Settings.System.getInt(resolver,
                 Settings.System.STATUSBAR_SIGNAL_TEXT,STYLE_HIDE) > 0);
         showingWiFiText = Settings.System.getInt(resolver,
@@ -278,7 +283,16 @@ public class SignalClusterView
         boolean clustdefault = getResources().getBoolean(R.bool.statusbar_alt_signal_layout);
         showingAltCluster = Settings.System.getBoolean(resolver,
                 Settings.System.STATUSBAR_SIGNAL_CLUSTER_ALT, clustdefault);
+        if (fontSize != mFontSize) {
+        	mFontSize = fontSize;
+        	mWiFiText.setTextSize(mFontSize);
+        	mMobileText.setTextSize(mFontSize);
+        }	
         apply();
+    }
+    public int pixelsToSp(Float px) {
+    	float scaledDensity = mContext.getResources().getDisplayMetrics().scaledDensity;
+    	return (int) (px/scaledDensity);
     }
 }
 

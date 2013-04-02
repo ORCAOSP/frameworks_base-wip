@@ -2459,7 +2459,13 @@ public final class Settings {
          * @hide
          */
         public static final String STATUSBAR_CLOCK_WEEKDAY = "statusbar_clock_weekday";
-
+        
+        /**  
+         * This should be an Int representing the Font Size in SP. 
+         * @hide
+         */
+        public static final String STATUSBAR_FONT_SIZE = "statusbar_font_size";
+         
         /**
          * Show the pending notification counts as overlays on the statusbar
          * @hide
