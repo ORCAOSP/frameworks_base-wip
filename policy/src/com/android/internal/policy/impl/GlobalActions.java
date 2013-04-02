@@ -34,6 +34,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.ResolveInfo;
 import android.content.pm.UserInfo;
 import android.content.ServiceConnection;
 import android.database.ContentObserver;
@@ -81,6 +82,7 @@ import android.widget.ImageView;
 import android.widget.ImageView.ScaleType;
 import android.widget.ListView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.google.android.collect.Lists;
 import com.android.internal.app.ThemeUtils;
@@ -135,7 +137,6 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
     private boolean mEnableScreenshotToggle = false;
     private boolean mEnableTorchToggle = false;
     private boolean mEnableAirplaneToggle = true;
-    private boolean mEnableVolumeStateToggle = true;
     private boolean mShowRebootOnLock = true;
     private static int rebootIndex = 0;
 
@@ -226,8 +227,6 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
      * @return A new dialog.
      */
     private GlobalActionsDialog createDialog() {
-        mEnableVolumeStateToggle = Settings.System.getBoolean(mContext.getContentResolver(),
-                Settings.System.POWER_DIALOG_SHOW_VOLUME_STATE_TOGGLE, true);
         // Simple toggle style if there's no vibrator, otherwise use a tri-state
         if (!mHasVibrator) {
             mSilentModeAction = new SilentModeToggleAction();
@@ -455,7 +454,7 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
         }
 
         // last: silent mode
-        if (mEnableVolumeStateToggle) {
+        if (SHOW_SILENT_TOGGLE) {
             mItems.add(mSilentModeAction);
         }
 
@@ -1040,13 +1039,12 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
         }
     }
 
-    private static class NavBarAction implements Action, View.OnClickListener {
+    private static class NavBarAction implements Action, View.OnClickListener, View.OnLongClickListener {
 
-        private final int[] ITEM_IDS = { R.id.navbarstatus, R.id.navbartoggle, R.id.navbarhome, R.id.navbarback,R.id.navbarmenu };
+        private final int[] ITEM_IDS = { R.id.navbartoggle, R.id.navbarhome, R.id.navbarback,R.id.navbarmenu };
 
         public Context mContext;
         public boolean mNavbarVisible;
-        public boolean mNavbarStatusInvisible;
         private final Handler mHandler;
         private int mInjectKeycode;
         long mDownTime;
@@ -1061,17 +1059,16 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
             mContext = context;
             mNavbarVisible = Settings.System.getBoolean(mContext.getContentResolver(),
                     Settings.System.NAVIGATION_BAR_SHOW_NOW, false);
-            mNavbarStatusInvisible = Settings.System.getBoolean(mContext.getContentResolver(),
-                    Settings.System.STATUSBAR_HIDDEN, false);        
 
             View v = inflater.inflate(R.layout.global_actions_navbar_mode, parent, false);
 
-            for (int i = 0; i < 5; i++) {
+            for (int i = 0; i < 4; i++) {
                 View itemView = v.findViewById(ITEM_IDS[i]);
-                itemView.setSelected((i==0)&&(!mNavbarStatusInvisible)||(i==1)&&(mNavbarVisible));
+                itemView.setSelected((i==0)&&(mNavbarVisible));
                 // Set up click handler
                 itemView.setTag(i);
                 itemView.setOnClickListener(this);
+                itemView.setOnLongClickListener(this);
             }
             return v;
         }
@@ -1098,6 +1095,26 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
         void willCreate() {
         }
 
+        public boolean onLongClick(View v) {
+            if (!(v.getTag() instanceof Integer)) return false;
+
+            int index = (Integer) v.getTag();
+
+            switch (index) {
+
+            case 0 :
+            case 1:
+                break;
+            case 2:
+                mHandler.post(mKillTask);
+                break;
+
+            case 3:
+                break;
+            }
+            return false;
+        }
+
         public void onClick(View v) {
             if (!(v.getTag() instanceof Integer)) return;
 
@@ -1106,14 +1123,6 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
             switch (index) {
 
             case 0 :
-                mNavbarStatusInvisible = !mNavbarStatusInvisible;
-                Settings.System.putBoolean(mContext.getContentResolver(),
-                        Settings.System.STATUSBAR_HIDDEN,
-                         mNavbarStatusInvisible );
-                v.setSelected(mNavbarStatusInvisible);
-                mHandler.sendEmptyMessage(MESSAGE_DISMISS);
-                break;
-            case 1 :
                 mNavbarVisible = !mNavbarVisible;
                 Settings.System.putBoolean(mContext.getContentResolver(),
                         Settings.System.NAVIGATION_BAR_SHOW_NOW,
@@ -1122,19 +1131,39 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
                 mHandler.sendEmptyMessage(MESSAGE_DISMISS);
                 break;
 
-            case 2:
+            case 1:
                 injectKeyDelayed(KeyEvent.KEYCODE_HOME,SystemClock.uptimeMillis());
                 break;
 
-            case 3:
+            case 2:
                 injectKeyDelayed(KeyEvent.KEYCODE_BACK,SystemClock.uptimeMillis());
                 break;
 
-            case 4:
+            case 3:
                 injectKeyDelayed(KeyEvent.KEYCODE_MENU,SystemClock.uptimeMillis());
                 break;
             }
         }
+
+        Runnable mKillTask = new Runnable() {
+            public void run() {
+                final Intent intent = new Intent(Intent.ACTION_MAIN);
+                final ActivityManager am = (ActivityManager) mContext
+                      .getSystemService(Activity.ACTIVITY_SERVICE);
+                String defaultHomePackage = "com.android.launcher";
+                intent.addCategory(Intent.CATEGORY_HOME);
+                final ResolveInfo res = mContext.getPackageManager().resolveActivity(intent, 0);
+                if (res.activityInfo != null && !res.activityInfo.packageName.equals("android")) {
+                    defaultHomePackage = res.activityInfo.packageName;
+                }
+                String packageName = am.getRunningTasks(1).get(0).topActivity.getPackageName();
+                if (!defaultHomePackage.equals(packageName)) {
+                    am.forceStopPackage(packageName);
+                    Toast.makeText(mContext, R.string.app_killed_message, Toast.LENGTH_SHORT).show();
+                }
+            }
+        };
+
         public void injectKeyDelayed(int keycode,long downtime){
             mInjectKeycode = keycode;
             mDownTime = downtime;
@@ -1201,12 +1230,8 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
             if (!mHasTelephony) return;
             final boolean inAirplaneMode = serviceState.getState() == ServiceState.STATE_POWER_OFF;
             mAirplaneState = inAirplaneMode ? ToggleAction.State.On : ToggleAction.State.Off;
-            if (mAirplaneModeOn != null) {
-                mAirplaneModeOn.updateState(mAirplaneState);
-            }
-            if (mAdapter != null) {
-                mAdapter.notifyDataSetChanged();
-            }
+            mAirplaneModeOn.updateState(mAirplaneState);
+            mAdapter.notifyDataSetChanged();
         }
     };
 
@@ -1434,21 +1459,5 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
         }
 
         return d;
-    }
-
-    public void showRebootDialog(boolean keyguardShowing) {
-        mKeyguardShowing = keyguardShowing;
-        AlertDialog rDialog = createRebootDialog();
-        if (mKeyguardShowing) {
-            mShowRebootOnLock = Settings.System.getBoolean(mContext.getContentResolver(),
-                    Settings.System.POWER_DIALOG_SHOW_REBOOT_KEYGUARD, true);
-            if (mShowRebootOnLock) {
-                rDialog.show();
-                rDialog.getWindow().getDecorView().setSystemUiVisibility(
-                        View.STATUS_BAR_DISABLE_EXPAND);
-            }
-        } else {
-            rDialog.show();
-        }
     }
 }
